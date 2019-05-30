@@ -5,7 +5,9 @@ namespace JCIT\behaviors;
 use Carbon\Carbon;
 use yii\base\Behavior;
 use yii\base\InvalidArgumentException;
+use yii\base\InvalidConfigException;
 use yii\base\UnknownPropertyException;
+use yii\db\ActiveRecord;
 
 /**
  * Class DateTimeBehavior
@@ -39,6 +41,11 @@ class DateTimeBehavior extends Behavior
     public $attributeTimezone = 'UTC';
 
     /**
+     * @var string
+     */
+    public $dateTimeClass = Carbon::class;
+
+    /**
      * Formats of how to (de)serialize the property
      *
      * @var array
@@ -56,16 +63,21 @@ class DateTimeBehavior extends Behavior
      */
     public function __get($name)
     {
-        if (($realName = $this->isBehaviorAttribute($name)) !== false) {
-            $type = $this->attributes[$name];
+        if (($realName = $this->isBehaviorProperty($name)) !== false) {
+            $type = $this->attributes[$realName];
             switch ($type) {
                 case self::TYPE_DATETIME:
-                    $timezone = (new Carbon())->timezone;
-                    $result = Carbon::createFromFormat($this->typeFormats[$type], parent::__get($realName), new \DateTimeZone($this->attributeTimezone));
-                    $result->setTimezone($timezone);
+                    $timezone = (new Carbon())->timezone->getName();
+                    $result = $this->dateTimeClass::createFromFormat($this->typeFormats[$type], $this->owner->{$realName}, $this->attributeTimezone);
+                    $new = new $this->dateTimeClass($this->owner->{$realName}, 'UTC');
+                    var_dump($new);
+                    $new->shiftTimezone('Europe/Amsterdam');
+                    var_dump($new);
+                    var_dump($result);
+                    $result->shiftTimezone($timezone);
                 case self::TYPE_DATE:
                 case self::TYPE_TIME:
-                    $result = Carbon::createFromFormat($this->typeFormats[$type], parent::__get($realName));
+                    $result = Carbon::createFromFormat($this->typeFormats[$type], $this->owner->{$realName});
                     break;
                 default:
                     throw new UnknownPropertyException('Unknown type');
@@ -84,13 +96,13 @@ class DateTimeBehavior extends Behavior
      */
     public function __set($name, $value)
     {
-        if (($realName = $this->isBehaviorAttribute($name)) !== false) {
+        if (($realName = $this->isBehaviorProperty($name)) !== false) {
             if (!$value instanceof Carbon) {
                 throw new InvalidArgumentException('Can only set objects instance of ' . Carbon::class);
             }
             $clonedValue = $value->clone();
 
-            $type = $this->attributes[$name];
+            $type = $this->attributes[$realName];
             switch ($type) {
                 case self::TYPE_DATETIME:
                     $clonedValue->setTimezone($this->attributeTimezone);
@@ -107,13 +119,39 @@ class DateTimeBehavior extends Behavior
     }
 
     /**
+     * @param \yii\base\Component $owner
+     * @throws InvalidConfigException
+     */
+    public function attach($owner)
+    {
+        if (empty($this->attributes) && $owner instanceof ActiveRecord) {
+            $map = [
+                'date' => self::TYPE_DATE,
+                'datetime' => self::TYPE_DATETIME,
+                'time' => self::TYPE_TIME,
+                'timestamp' => self::TYPE_DATETIME
+            ];
+
+            $attributes = $owner::getTableSchema()->columns;
+            foreach ($attributes as $attribute => $columnSchema) {
+                if (isset($map[$columnSchema->type])) {
+                    $this->attributes[$attribute] = $map[$columnSchema->type];
+                }
+            }
+        }
+
+        parent::attach($owner);
+    }
+
+
+    /**
      * @param string $name
      * @param bool $checkVars
      * @return bool
      */
     public function canGetProperty($name, $checkVars = true)
     {
-        return $this->isBehaviorAttribute($name)
+        return $this->isBehaviorProperty($name)
             || parent::canGetProperty($name, $checkVars);
     }
 
@@ -124,7 +162,7 @@ class DateTimeBehavior extends Behavior
      */
     public function canSetProperty($name, $checkVars = true)
     {
-        return $this->isBehaviorAttribute($name)
+        return $this->isBehaviorProperty($name)
             || parent::canSetProperty($name, $checkVars);
     }
 
@@ -133,6 +171,10 @@ class DateTimeBehavior extends Behavior
      */
     public function init()
     {
+        if ($this->dateTimeClass !== Carbon::class && !is_subclass_of($this->dateTimeClass, Carbon::class)) {
+            throw new InvalidConfigException('DateTimeClass must be instance of ' . Carbon::class);
+        }
+
         parent::init();
     }
 
@@ -145,8 +187,8 @@ class DateTimeBehavior extends Behavior
         $realName = $this->realName($name);
         return
             $realName . $this->attributeSuffix === $name && isset($this->attributes[$realName])
-            ? $realName
-            : false;
+                ? $realName
+                : false;
     }
 
     /**
@@ -156,7 +198,7 @@ class DateTimeBehavior extends Behavior
     protected function realName(string $name): string
     {
         if (strpos($name, $this->attributeSuffix) !== false) {
-            return substr($name, -(strlen($this->attributeSuffix)));
+            return substr($name, 0, -(strlen($this->attributeSuffix)));
         }
         return $name;
     }
