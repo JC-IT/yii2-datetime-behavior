@@ -1,0 +1,29 @@
+{
+    "name": "jc-it/yii2-datetime-behavior",
+    "description": "Objects of date/time/timestamp fields via magic getter and setter.",
+    "type": "library",
+    "require": {
+        "php": ">=7.1.0",
+
+        "nesbot/carbon": "^2.18.0",
+        "yiisoft/yii2": "^2.0"
+    },
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Joey Claessen",
+            "email": "joey_claessen@hotmail.com"
+        }
+    ],
+    "repositories": [
+        {
+            "type": "composer",
+            "url": "https://asset-packagist.org"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "JCIT\\": ["src/"]
+        }
+    }
+}
